@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Disallow: /assets/
+Disallow: /private/
+
+Sitemap: https://codeloot.codes/sitemap.xml
+
+# Allow Google AdSense crawlers
+User-agent: Googlebot-Image
+Allow: /
+
+User-agent: Mediapartners-Google
+Allow: /

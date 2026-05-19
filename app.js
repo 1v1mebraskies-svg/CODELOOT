@@ -103,6 +103,36 @@ js
         });
     }
 
+    function setupContactForm() {
+        const contactForm = document.getElementById("contact-form");
+
+        if (!contactForm) {
+            return;
+        }
+
+        contactForm.addEventListener("submit", function (event) {
+            event.preventDefault();
+
+            const name = contactForm.querySelector("#name").value.trim();
+            const email = contactForm.querySelector("#email").value.trim();
+            const subject = contactForm.querySelector("#subject").value.trim();
+            const message = contactForm.querySelector("#message").value.trim();
+
+            if (!name || !email || !subject || !message) {
+                alert("Please fill in all fields.");
+                return;
+            }
+
+            const mailtoLink = "mailto:hello@codeloot.codes?subject=" + 
+                encodeURIComponent("[CodeLoot Contact] " + subject) +
+                "&body=" + 
+                encodeURIComponent("Name: " + name + "\nEmail: " + email + "\n\nMessage:\n" + message);
+
+            window.location.href = mailtoLink;
+        });
+    }
+
     setupSearch();
     setupCopyButtons();
+    setupContactForm();
 }());
