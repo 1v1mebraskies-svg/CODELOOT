@@ -2,8 +2,15 @@ js
 (function () {
     const games = {
         "blox fruits": "blox-fruits.html",
+        "king legacy": "king-legacy.html",
+        "anime defenders": "anime-defenders.html",
+        "fruit battlegrounds": "fruit-battlegrounds.html",
+        "blade ball": "blade-ball.html",
         "anime warriors": "anime-warriors.html",
-        "blue lock rivals": "blue-lock-rivals.html"
+        "anime warriors 3": "anime-warriors.html",
+        "blue lock rivals": "blue-lock-rivals.html",
+        "type soul": "type-soul.html",
+        "untitled boxing game": "untitled-boxing-game.html"
     };
 
     const siteRoot = document.body.dataset.siteRoot || ".";
