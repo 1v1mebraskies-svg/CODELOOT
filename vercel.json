@@ -15,10 +15,6 @@
     {
       "source": "/login",
       "destination": "/admin/login.html"
-    },
-    {
-      "source": "/((?!api|admin|login|data|assets|games).*)",
-      "destination": "/index.html"
     }
   ],
   "headers": [
