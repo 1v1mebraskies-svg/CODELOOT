@@ -5,18 +5,6 @@
       "destination": "/api/:path*"
     },
     {
-      "source": "/admin",
-      "destination": "/admin/admin-index.html"
-    },
-    {
-      "source": "/admin/:path*",
-      "destination": "/admin/:path*"
-    },
-    {
-      "source": "/login",
-      "destination": "/admin/login.html"
-    },
-    {
       "source": "/data/:path*",
       "destination": "/data/:path*"
     },
@@ -27,6 +15,21 @@
     {
       "source": "/games/:path*",
       "destination": "/games/:path*"
+    },
+    {
+      "source": "/login",
+      "has": [{ "type": "host", "value": "admin.codeloot.codes" }],
+      "destination": "/login.html"
+    },
+    {
+      "source": "/admin",
+      "has": [{ "type": "host", "value": "admin.codeloot.codes" }],
+      "destination": "/admin-index.html"
+    },
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "admin.codeloot.codes" }],
+      "destination": "/admin-index.html"
     },
     {
       "source": "/(.*)",

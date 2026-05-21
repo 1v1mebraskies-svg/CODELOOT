@@ -3,111 +3,361 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CODELOOT Admin Panel</title>
+    <title>CodeLoot Admin Dashboard</title>
     <link rel="stylesheet" href="admin-style.css">
+    <style>
+        .auth-check {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: var(--bg);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+        }
+        .auth-check.active {
+            display: flex;
+        }
+        .admin-layout {
+            display: grid;
+            grid-template-columns: 250px 1fr;
+            min-height: 100vh;
+        }
+        .admin-sidebar {
+            background: var(--surface);
+            border-right: 1px solid var(--line);
+            padding: 20px;
+        }
+        .admin-nav { list-style: none; padding: 0; margin: 0; }
+        .admin-nav li { margin-bottom: 8px; }
+        .admin-nav a {
+            display: block;
+            padding: 12px 16px;
+            border-radius: var(--radius-card);
+            color: var(--muted);
+        }
+        .admin-nav a:hover, .admin-nav a.active {
+            background: var(--surface-strong);
+            color: var(--text);
+        }
+        .admin-main { padding: 40px; }
+        .admin-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border-radius: var(--radius-card);
+            border: none;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .btn-primary { background: var(--blue); color: white; }
+        .btn-danger { background: var(--danger); color: white; }
+        .table-container {
+            background: var(--surface);
+            border-radius: var(--radius-card);
+            overflow: hidden;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 16px; text-align: left; border-bottom: 1px solid var(--line); }
+        th { background: var(--surface-strong); color: var(--muted-strong); }
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: var(--radius-pill);
+            font-size: 12px;
+        }
+        .badge-active { background: rgba(101, 243, 200, 0.2); color: var(--mint); }
+        .badge-inactive { background: rgba(255, 107, 136, 0.2); color: var(--danger); }
+        .badge-featured { background: rgba(255, 204, 102, 0.2); color: var(--warning); }
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: var(--surface);
+            border-radius: var(--radius-card);
+            padding: 30px;
+            width: 100%;
+            max-width: 820px;
+            max-height: 92vh;
+            overflow-y: auto;
+        }
+        .form-group { margin-bottom: 16px; }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--muted);
+            font-size: 14px;
+        }
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--line);
+            border-radius: var(--radius-card);
+            background: var(--bg);
+            color: var(--text);
+            font-size: 14px;
+        }
+        .form-group textarea { min-height: 80px; resize: vertical; }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .checkbox-group { display: flex; align-items: center; gap: 8px; }
+        .checkbox-group input { width: auto; }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .modal-footer {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid var(--line);
+        }
+        .search-bar { margin-bottom: 20px; }
+        .search-bar input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--line);
+            border-radius: var(--radius-card);
+            background: var(--surface);
+            color: var(--text);
+        }
+        .editor-section {
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid var(--line);
+        }
+        .editor-section h3 { margin: 0 0 12px; font-size: 16px; }
+        .image-preview {
+            margin-top: 10px;
+            max-width: 280px;
+            border-radius: var(--radius-card);
+            border: 1px solid var(--line);
+        }
+        .codes-editor .code-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto auto;
+            gap: 8px;
+            margin-bottom: 8px;
+            align-items: center;
+        }
+        .codes-editor .code-row input,
+        .codes-editor .code-row select {
+            padding: 8px;
+            border: 1px solid var(--line);
+            border-radius: var(--radius-card);
+            background: var(--bg);
+            color: var(--text);
+        }
+        .save-status {
+            font-size: 14px;
+            color: var(--mint);
+            margin-right: auto;
+        }
+        .save-status.error { color: var(--danger); }
+        @media (max-width: 768px) {
+            .admin-layout { grid-template-columns: 1fr; }
+            .admin-sidebar { display: none; }
+            .form-row { grid-template-columns: 1fr; }
+            .codes-editor .code-row { grid-template-columns: 1fr; }
+            .admin-header { flex-direction: column; align-items: stretch; }
+            .admin-header h1 { font-size: 1.5rem; }
+            .modal-content { padding: 20px; max-height: 95vh; }
+            .table-container { overflow-x: auto; }
+            table { min-width: 600px; }
+        }
+        @media (max-width: 480px) {
+            .admin-main { padding: 20px; }
+            .btn { padding: 8px 16px; font-size: 14px; }
+            .modal-content { padding: 16px; }
+            th, td { padding: 12px 8px; font-size: 13px; }
+        }
+    </style>
 </head>
 <body>
-    <div class="admin-container">
-        <header>
-            <h1>CODELOOT Admin Panel</h1>
-            <button id="addGameBtn" class="btn btn-primary">+ Add Game</button>
-        </header>
-
-        <div id="loading" class="loading-state">Loading games...</div>
-        <div id="error" class="error-state" style="display:none;"></div>
-
-        <div id="gamesTableContainer" style="display:none;">
-            <table id="gamesTable">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Image</th>
-                        <th>Name</th>
-                        <th>Slug</th>
-                        <th>Category</th>
-                        <th>Featured</th>
-                        <th>Active</th>
-                        <th>Codes</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="gamesTableBody">
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Game Modal -->
-        <div id="gameModal" class="modal" style="display:none;">
-            <div class="modal-content">
-                <span class="close">&times;</span>
-                <h2 id="modalTitle">Edit Game</h2>
-                <form id="gameForm">
-                    <input type="hidden" id="gameId">
-                    
-                    <div class="form-group">
-                        <label for="gameName">Name *</label>
-                        <input type="text" id="gameName" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="gameSlug">Slug *</label>
-                        <input type="text" id="gameSlug" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="gameCategory">Category *</label>
-                        <select id="gameCategory" required>
-                            <option value="">Select Category</option>
-                            <option value="anime">Anime</option>
-                            <option value="general">General</option>
-                            <option value="pvp">PvP</option>
-                            <option value="rng">RNG</option>
-                            <option value="horror">Horror</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="gameDescription">Description *</label>
-                        <textarea id="gameDescription" required rows="2"></textarea>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="gameShortDescription">Short Description</label>
-                        <textarea id="gameShortDescription" rows="2"></textarea>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="gameLongDescription">Long Description</label>
-                        <textarea id="gameLongDescription" rows="3"></textarea>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="gameImage">Image File</label>
-                        <input type="file" id="gameImage" accept="image/*">
-                        <small>Current: <span id="currentImageName">-</span></small>
-                        <div id="imagePreview"></div>
-                    </div>
-                    
-                    <div class="form-group checkbox-group">
-                        <label>
-                            <input type="checkbox" id="gameFeatured">
-                            Featured
-                        </label>
-                        <label>
-                            <input type="checkbox" id="gameActive">
-                            Active
-                        </label>
-                    </div>
-                    
-                    <div class="form-actions">
-                        <button type="submit" class="btn btn-primary">Save Game</button>
-                        <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
-                    </div>
-                </form>
-            </div>
+    <div class="auth-check" id="auth-check">
+        <div style="text-align: center;">
+            <p style="color: var(--muted);">Checking authentication...</p>
         </div>
     </div>
 
-    <script src="admin.js"></script>
+    <div class="admin-layout">
+        <aside class="admin-sidebar">
+            <div style="margin-bottom: 30px;">
+                <span class="brand-mark">CL</span>
+                <span class="brand-name">CodeLoot Admin</span>
+            </div>
+            <ul class="admin-nav">
+                <li><a href="#" class="active">Games</a></li>
+                <li><a href="#" id="logout-btn" style="color: var(--danger);">Logout</a></li>
+            </ul>
+            <p style="color: var(--muted); font-size: 13px; margin-top: 24px;">
+                Save automatically publishes game pages, homepage cards, images, and search — no manual steps.
+            </p>
+        </aside>
+
+        <main class="admin-main">
+            <div class="admin-header">
+                <h1>Games Management</h1>
+                <div style="display:flex;gap:12px;flex-direction:column;align-items:flex-end;">
+                    <div style="display:flex;gap:12px;">
+                        <button class="btn" id="import-games-btn" type="button" style="background:var(--surface-strong);">Reload from Data</button>
+                        <button class="btn btn-primary" id="add-game-btn" type="button">+ Add Game</button>
+                    </div>
+                    <div id="sync-status" style="font-size:12px;color:var(--muted);"></div>
+                </div>
+            </div>
+
+            <div class="search-bar">
+                <input type="text" id="search-games" placeholder="Search games by name, slug, or description...">
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Slug</th>
+                            <th>Category</th>
+                            <th>Codes</th>
+                            <th>Status</th>
+                            <th>Featured</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="games-table-body"></tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <div class="modal" id="game-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Add Game</h2>
+                <button class="btn" type="button" id="close-modal">✕</button>
+            </div>
+            <form id="game-form">
+                <input type="hidden" id="game-id">
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="game-name">Game Name *</label>
+                        <input type="text" id="game-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="game-slug">Slug (URL) *</label>
+                        <input type="text" id="game-slug" required placeholder="blox-fruits">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="game-short-description">Short Description (homepage card) *</label>
+                    <textarea id="game-short-description" required rows="2"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="game-long-description">Long Description (game page banner) *</label>
+                    <textarea id="game-long-description" required rows="3"></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="game-category">Category</label>
+                        <select id="game-category">
+                            <option value="anime">Anime Games</option>
+                            <option value="pvp">PvP Games</option>
+                            <option value="rng">RNG / Simulator Games</option>
+                            <option value="horror">Horror / Survival Games</option>
+                            <option value="general">General</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="game-reward-label">Reward Label (stats card)</label>
+                        <input type="text" id="game-reward-label" placeholder="2x XP">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="game-update-date">Last Checked Date</label>
+                        <input type="text" id="game-update-date" placeholder="May 20, 2026">
+                    </div>
+                    <div class="form-group checkbox-group" style="align-self: end;">
+                        <input type="checkbox" id="game-featured">
+                        <label for="game-featured">Featured on homepage</label>
+                    </div>
+                </div>
+
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" id="game-active" checked>
+                    <label for="game-active">Active (live on site)</label>
+                </div>
+
+                <div class="form-group">
+                    <label for="game-update-info">Update Info (sidebar note)</label>
+                    <textarea id="game-update-info" rows="2"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="game-redeem">Redeem Instructions (one step per line)</label>
+                    <textarea id="game-redeem" rows="4" placeholder="Open the game on Roblox.&#10;Open Settings → Redeem Codes.&#10;Paste the code exactly as shown."></textarea>
+                </div>
+
+                <div class="editor-section">
+                    <h3>Game Image</h3>
+                    <div class="form-group">
+                        <label for="game-image">Upload banner image (PNG/JPG/WebP)</label>
+                        <input type="file" id="game-image" accept="image/png,image/jpeg,image/webp,image/gif">
+                        <img id="image-preview" class="image-preview" alt="" hidden>
+                    </div>
+                </div>
+
+                <div class="editor-section codes-editor">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                        <h3>Codes &amp; Rewards</h3>
+                        <button type="button" class="btn btn-primary" id="add-code-row-btn">+ Add Code</button>
+                    </div>
+                    <div id="codes-editor-list"></div>
+                    <div class="form-group" style="margin-top:16px;">
+                        <label for="bulk-codes">Bulk add (one per line: CODE|Reward)</label>
+                        <textarea id="bulk-codes" rows="4" placeholder="FREECODE|100 Gems&#10;UPDATE2026|2x EXP"></textarea>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <span class="save-status" id="save-status" hidden></span>
+                    <button type="button" class="btn" id="cancel-modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="save-game-btn">Save &amp; Publish</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="codeloot-data.js"></script>
+    <script src="cms-api.js"></script>
+    <script src="admin.js?v=live-master"></script>
 </body>
 </html>

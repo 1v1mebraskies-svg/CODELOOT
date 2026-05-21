@@ -1,8 +1,6 @@
 /api/:splat /api/:splat 200
 /data/:splat /data/:splat 200
 /assets/:splat /assets/:splat 200
-/games/:splat /games/:splat 200
-/admin /admin/admin-index.html 200
-/admin/:splat /admin/:splat 200
-/login /admin/login.html 200
-/* /index.html 200
+/login /login.html 200
+/admin /admin-index.html 200
+/* /admin-index.html 200
