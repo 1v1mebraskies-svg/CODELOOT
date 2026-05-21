@@ -10,7 +10,7 @@ This admin panel is designed to be deployed as a separate Vercel project at `adm
 
 1. **Create a new Vercel project**
    - Connect your GitHub repository
-   - Set root directory to `CLEANADMIN`
+   - Set root directory to `./` (root of CODELOOT)
    - Framework preset: "Other"
 
 2. **Environment Variables**
@@ -34,7 +34,7 @@ This admin panel is designed to be deployed as a separate Vercel project at `adm
 ## File Structure
 
 ```
-CLEANADMIN/
+CODELOOT/
 ├── admin-index.html    # Main admin dashboard
 ├── admin.js            # Admin logic with localStorage fallback
 ├── admin-style.css     # Admin styling
@@ -47,11 +47,18 @@ CLEANADMIN/
 ├── api/                # Vercel API routes
 │   ├── games.js        # Games CRUD operations
 │   ├── upload-image.js # Image upload handler
+│   ├── sync-pages.js   # Page sync endpoint
+│   ├── sync-status.js  # Sync status endpoint
 │   └── cms-health.js   # Health check endpoint
 ├── lib/
 │   └── github-api.js   # GitHub API utilities
-└── data/
-    └── games.json      # Fallback data source
+├── data/
+│   └── games.json      # Shared data source (single source of truth)
+├── index.html          # Public site homepage
+├── app.js              # Public site JavaScript
+├── style.css           # Public site styling
+├── games/              # Public game pages (20 HTML files)
+└── assets/img/         # Game images (24 files)
 ```
 
 ## Authentication
