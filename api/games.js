@@ -1,35 +1,50 @@
-import fs from 'fs';
-import path from 'path';
+import { getFileContent, createOrUpdateFile } from '../lib/github-api.js';
 
-const DATA_FILE = path.join(process.cwd(), 'data', 'games.json');
+const DATA_PATH = 'data/games.json';
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
-      if (fs.existsSync(DATA_FILE)) {
-        const data = fs.readFileSync(DATA_FILE, 'utf8');
-        res.json(JSON.parse(data));
+      const content = await getFileContent(DATA_PATH);
+      
+      if (content) {
+        res.json(JSON.parse(content));
       } else {
         res.json({ games: [], metadata: { version: '1.0', last_updated: '' } });
       }
     } catch (error) {
+      console.error('Failed to read games data from GitHub:', error);
       res.status(500).json({ error: 'Failed to read games data' });
     }
   } else if (req.method === 'PUT') {
     try {
-      fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-      fs.writeFileSync(DATA_FILE, JSON.stringify(req.body, null, 2), 'utf8');
+      const gamesData = req.body;
       
-      // Note: On Vercel, we can't run the Python sync script directly
-      // You'll need to implement a different sync mechanism or use Vercel's build hooks
-      const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+      // Update metadata
+      if (!gamesData.metadata) {
+        gamesData.metadata = { version: '1.0', last_updated: '' };
+      }
+      gamesData.metadata.last_updated = new Date().toISOString();
+      
+      // Convert to JSON string
+      const content = JSON.stringify(gamesData, null, 2);
+      
+      // Create commit message
+      const activeCount = (gamesData.games || []).filter(g => g.active !== false).length;
+      const message = `Update games data (${activeCount} active games)`;
+      
+      // Update file in GitHub
+      await createOrUpdateFile(DATA_PATH, content, message);
+      
+      // GitHub Pages will automatically redeploy
       res.json({
         success: true,
-        synced: (data.games || []).filter(g => g.active !== false).length,
+        synced: activeCount,
         files: ['data/games.json'],
-        note: 'Auto-sync disabled on Vercel - manual sync required'
+        message: 'Committed to GitHub - GitHub Pages will deploy automatically'
       });
     } catch (error) {
+      console.error('Failed to save games data to GitHub:', error);
       res.status(500).json({ success: false, error: error.message });
     }
   } else {
