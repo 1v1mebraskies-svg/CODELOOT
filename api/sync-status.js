@@ -1,4 +1,4 @@
-import { getFileContent, getFileSha } from '../lib/github-api.js';
+import { getFileContent, getFileSha, getDeploymentStatus } from '../lib/github-api.js';
 
 const DATA_PATH = 'data/games.json';
 
@@ -8,21 +8,22 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get current file SHA (version)
-    const sha = await getFileSha(DATA_PATH);
-    
-    // Get file content to extract metadata
-    const content = await getFileContent(DATA_PATH);
+    const [sha, content, deployment] = await Promise.all([
+      getFileSha(DATA_PATH).catch(() => null),
+      getFileContent(DATA_PATH).catch(() => null),
+      getDeploymentStatus().catch(() => ({ status: 'unknown', error: 'Could not fetch deployment status' }))
+    ]);
+
     let lastUpdated = null;
     let version = '1.0';
-    
+
     if (content) {
       try {
         const data = JSON.parse(content);
         lastUpdated = data.metadata?.last_updated || null;
         version = data.metadata?.version || '1.0';
-      } catch (e) {
-        // If parsing fails, use defaults
+      } catch (_) {
+        // parsing error, use defaults
       }
     }
 
@@ -31,7 +32,14 @@ export default async function handler(req, res) {
       version: sha || 'unknown',
       last_updated: lastUpdated,
       metadata_version: version,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      deployment: {
+        status: deployment.status || 'unknown',
+        conclusion: deployment.conclusion || null,
+        html_url: deployment.html_url || null,
+        head_sha: deployment.head_sha || null,
+        error: deployment.error || null
+      }
     });
   } catch (error) {
     console.error('Failed to get sync status:', error);

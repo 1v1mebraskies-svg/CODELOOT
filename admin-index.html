@@ -13,6 +13,31 @@
             <button id="addGameBtn" class="btn btn-primary">+ Add Game</button>
         </header>
 
+        <!-- Sync Status Panel -->
+        <div id="syncStatusPanel" class="sync-status-panel" style="display:none;">
+            <div class="sync-steps">
+                <div id="sync-step-push" class="sync-step sync-pending">
+                    <span class="sync-step-icon">&#9675;</span>
+                    <span class="sync-step-label">Push to GitHub</span>
+                </div>
+                <div class="sync-step-arrow">&#8594;</div>
+                <div id="sync-step-verify" class="sync-step sync-pending">
+                    <span class="sync-step-icon">&#9675;</span>
+                    <span class="sync-step-label">Verify commit</span>
+                </div>
+                <div class="sync-step-arrow">&#8594;</div>
+                <div id="sync-step-deploy" class="sync-step sync-pending">
+                    <span class="sync-step-icon">&#9675;</span>
+                    <span class="sync-step-label">Deploy to live site</span>
+                </div>
+            </div>
+            <div id="syncErrorDetail" class="sync-error-detail" style="display:none;"></div>
+            <button id="syncRetryBtn" class="btn btn-sm btn-primary" style="display:none;" onclick="retrySave()">Retry Save</button>
+        </div>
+
+        <!-- Success Banner -->
+        <div id="successBanner" class="success-banner" style="display:none;"></div>
+
         <div id="loading" class="loading-state">Loading games...</div>
         <div id="error" class="error-state" style="display:none;"></div>
 
@@ -43,17 +68,17 @@
                 <h2 id="modalTitle">Edit Game</h2>
                 <form id="gameForm">
                     <input type="hidden" id="gameId">
-                    
+
                     <div class="form-group">
                         <label for="gameName">Name *</label>
                         <input type="text" id="gameName" required>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="gameSlug">Slug *</label>
                         <input type="text" id="gameSlug" required>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="gameCategory">Category *</label>
                         <select id="gameCategory" required>
@@ -65,29 +90,29 @@
                             <option value="horror">Horror</option>
                         </select>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="gameDescription">Description *</label>
                         <textarea id="gameDescription" required rows="2"></textarea>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="gameShortDescription">Short Description</label>
                         <textarea id="gameShortDescription" rows="2"></textarea>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="gameLongDescription">Long Description</label>
                         <textarea id="gameLongDescription" rows="3"></textarea>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="gameImage">Image File</label>
                         <input type="file" id="gameImage" accept="image/*">
                         <small>Current: <span id="currentImageName">-</span></small>
                         <div id="imagePreview"></div>
                     </div>
-                    
+
                     <div class="form-group checkbox-group">
                         <label>
                             <input type="checkbox" id="gameFeatured">
@@ -98,7 +123,7 @@
                             Active
                         </label>
                     </div>
-                    
+
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary">Save Game</button>
                         <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>

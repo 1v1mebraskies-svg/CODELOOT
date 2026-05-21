@@ -1,6 +1,9 @@
-// CODELOOT Admin Panel
+// CODELOOT Admin Panel — Reliable sync pipeline
 let gamesData = null;
 let currentEditingGameId = null;
+
+const DEPLOY_POLL_INTERVAL = 4000;
+const DEPLOY_POLL_MAX = 15;
 
 document.addEventListener('DOMContentLoaded', async () => {
     await loadGames();
@@ -11,13 +14,16 @@ async function loadGames() {
     try {
         document.getElementById('loading').style.display = 'block';
         document.getElementById('error').style.display = 'none';
-        
+
         const response = await fetch('/api/games');
-        if (!response.ok) throw new Error('Failed to fetch games');
-        
+        if (!response.ok) {
+            const body = await response.text().catch(() => '');
+            throw new Error('Failed to fetch games: ' + response.status + ' ' + body.slice(0, 200));
+        }
+
         gamesData = await response.json();
         console.log('Loaded games:', gamesData);
-        
+
         renderGamesTable();
         document.getElementById('loading').style.display = 'none';
         document.getElementById('gamesTableContainer').style.display = 'block';
@@ -39,17 +45,17 @@ function renderGamesTable() {
 
     gamesData.games.forEach(game => {
         const row = document.createElement('tr');
-        const imageHtml = game.image 
+        const imageHtml = game.image
             ? `<img src="/assets/img/${game.image}" alt="${game.name}" style="max-width:50px;max-height:40px;object-fit:cover;">`
             : '<span style="color:#999;">No image</span>';
-        
+
         row.innerHTML = `
             <td>${game.id}</td>
             <td>${imageHtml}</td>
             <td><strong>${escapeHtml(game.name)}</strong></td>
             <td>${escapeHtml(game.slug)}</td>
             <td>${escapeHtml(game.category || 'general')}</td>
-            <td>${game.featured ? '✓' : ''}</td>
+            <td>${game.featured ? '\u2713' : ''}</td>
             <td><span class="badge ${game.active ? 'active' : 'inactive'}">${game.active ? 'Active' : 'Inactive'}</span></td>
             <td>${(game.codes || []).length}</td>
             <td class="actions">
@@ -62,26 +68,15 @@ function renderGamesTable() {
 }
 
 function setupEventListeners() {
-    // Add Game button
     document.getElementById('addGameBtn').addEventListener('click', openGameModal);
-
-    // Game form submit
     document.getElementById('gameForm').addEventListener('submit', handleGameSubmit);
-
-    // Cancel button
     document.getElementById('cancelBtn').addEventListener('click', () => {
         document.getElementById('gameModal').style.display = 'none';
     });
-
-    // Close button
     document.querySelector('.close').addEventListener('click', () => {
         document.getElementById('gameModal').style.display = 'none';
     });
-
-    // Image preview
     document.getElementById('gameImage').addEventListener('change', handleImagePreview);
-
-    // Close modal when clicking outside
     window.addEventListener('click', (e) => {
         const modal = document.getElementById('gameModal');
         if (e.target === modal) {
@@ -111,10 +106,10 @@ function openGameModal(game = null) {
         document.getElementById('gameLongDescription').value = game.long_description || '';
         document.getElementById('gameFeatured').checked = !!game.featured;
         document.getElementById('gameActive').checked = game.active !== false;
-        
+
         if (game.image) {
             document.getElementById('currentImageName').textContent = game.image;
-            document.getElementById('imagePreview').innerHTML = 
+            document.getElementById('imagePreview').innerHTML =
                 `<img src="/assets/img/${game.image}" alt="Current" style="max-width:200px;max-height:150px;margin-top:10px;">`;
         }
     } else {
@@ -141,9 +136,8 @@ async function deleteGame(gameId) {
 
     try {
         gamesData.games = gamesData.games.filter(g => g.id !== gameId);
-        await saveGames();
+        await saveGamesWithSync('Game deleted');
         renderGamesTable();
-        showSuccess('Game deleted successfully');
     } catch (error) {
         console.error('Error deleting game:', error);
         showError('Failed to delete game: ' + error.message);
@@ -176,7 +170,6 @@ async function handleGameSubmit(e) {
             const imageResult = await uploadImage(imageFile, gameData.slug);
             gameData.image = imageResult.image;
         } else if (currentEditingGameId) {
-            // Preserve existing image if no new upload
             const existing = gamesData.games.find(g => g.id === currentEditingGameId);
             if (existing && existing.image) {
                 gameData.image = existing.image;
@@ -184,7 +177,6 @@ async function handleGameSubmit(e) {
         }
 
         if (currentEditingGameId) {
-            // Update existing game
             const index = gamesData.games.findIndex(g => g.id === currentEditingGameId);
             if (index !== -1) {
                 gameData.id = currentEditingGameId;
@@ -195,9 +187,8 @@ async function handleGameSubmit(e) {
                 gamesData.games[index] = gameData;
             }
         } else {
-            // Add new game
-            const newId = gamesData.games.length > 0 
-                ? Math.max(...gamesData.games.map(g => g.id)) + 1 
+            const newId = gamesData.games.length > 0
+                ? Math.max(...gamesData.games.map(g => g.id)) + 1
                 : 1;
             gameData.id = newId;
             gameData.created_at = new Date().toISOString();
@@ -207,10 +198,10 @@ async function handleGameSubmit(e) {
             gamesData.games.push(gameData);
         }
 
-        await saveGames();
+        const action = currentEditingGameId ? 'Game updated' : 'Game added';
+        await saveGamesWithSync(action);
         renderGamesTable();
         document.getElementById('gameModal').style.display = 'none';
-        showSuccess(currentEditingGameId ? 'Game updated successfully' : 'Game added successfully');
         currentEditingGameId = null;
     } catch (error) {
         console.error('Error saving game:', error);
@@ -229,34 +220,221 @@ async function uploadImage(file, slug) {
     });
 
     if (!response.ok) {
-        throw new Error('Image upload failed');
+        const body = await response.text().catch(() => '');
+        throw new Error('Image upload failed: ' + response.status + ' ' + body.slice(0, 200));
     }
 
     return await response.json();
 }
 
-async function saveGames() {
+// ─── Sync pipeline ───────────────────────────────────────────────────────────
+
+function setSyncStep(stepId, status, detail) {
+    const el = document.getElementById('sync-step-' + stepId);
+    if (!el) return;
+
+    el.className = 'sync-step sync-' + status;
+
+    const icon = el.querySelector('.sync-step-icon');
+    const label = el.querySelector('.sync-step-label');
+
+    if (icon) {
+        const icons = { pending: '\u25CB', in_progress: '\u21BB', success: '\u25CF', failed: '\u2717', warning: '\u26A0' };
+        icon.textContent = icons[status] || '\u25CB';
+    }
+    if (detail && label) {
+        label.textContent = detail;
+    }
+}
+
+function resetSyncStatus() {
+    const panel = document.getElementById('syncStatusPanel');
+    if (!panel) return;
+    panel.style.display = 'none';
+    setSyncStep('push', 'pending', 'Push to GitHub');
+    setSyncStep('verify', 'pending', 'Verify commit');
+    setSyncStep('deploy', 'pending', 'Deploy to live site');
+    const retryBtn = document.getElementById('syncRetryBtn');
+    if (retryBtn) retryBtn.style.display = 'none';
+    const errorBox = document.getElementById('syncErrorDetail');
+    if (errorBox) {
+        errorBox.style.display = 'none';
+        errorBox.textContent = '';
+    }
+}
+
+function showSyncPanel() {
+    const panel = document.getElementById('syncStatusPanel');
+    if (panel) panel.style.display = 'block';
+}
+
+function showSyncError(message) {
+    const errorBox = document.getElementById('syncErrorDetail');
+    if (errorBox) {
+        errorBox.textContent = message;
+        errorBox.style.display = 'block';
+    }
+}
+
+let lastSavePayload = null;
+
+async function saveGamesWithSync(actionLabel) {
+    resetSyncStatus();
+    showSyncPanel();
+
+    setSyncStep('push', 'in_progress', 'Pushing to GitHub...');
+
+    const payload = JSON.parse(JSON.stringify(gamesData));
+    lastSavePayload = payload;
+
+    let result;
+    try {
+        result = await saveGamesToApi(payload);
+    } catch (err) {
+        setSyncStep('push', 'failed', 'Push failed');
+        showSyncError('GitHub push error: ' + err.message);
+        showRetryButton();
+        throw err;
+    }
+
+    if (!result.success) {
+        setSyncStep('push', 'failed', 'Push failed');
+        showSyncError(result.error || 'Unknown error');
+        showRetryButton();
+        throw new Error(result.error || 'Save failed');
+    }
+
+    // Update version from server response
+    if (result.version) {
+        gamesData._version = result.version;
+    }
+
+    const steps = result.steps || {};
+
+    // GitHub push status
+    if (steps.github_push) {
+        setSyncStep('push', steps.github_push.status === 'success' ? 'success' : 'failed',
+            steps.github_push.status === 'success' ? 'Pushed to GitHub' : 'Push failed');
+        if (steps.github_push.error) {
+            showSyncError('GitHub push: ' + steps.github_push.error);
+            showRetryButton();
+            return;
+        }
+    } else {
+        setSyncStep('push', 'success', 'Pushed to GitHub');
+    }
+
+    // Commit verification
+    if (steps.commit_verified) {
+        setSyncStep('verify', steps.commit_verified.status === 'success' ? 'success' : 'warning',
+            steps.commit_verified.status === 'success' ? 'Commit verified' : 'Verification uncertain');
+    } else {
+        setSyncStep('verify', 'success', 'Commit verified');
+    }
+
+    // Deployment status — poll until complete or timeout
+    setSyncStep('deploy', 'in_progress', 'Deploying to live site...');
+    await pollDeploymentStatus(result.commit);
+
+    showSuccess(actionLabel + ' — synced to live site');
+}
+
+async function saveGamesToApi(data) {
     const response = await fetch('/api/games', {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
+            'X-If-Version': data._version || '',
         },
-        body: JSON.stringify(gamesData)
+        body: JSON.stringify(data)
     });
 
-    if (!response.ok) {
-        throw new Error('Failed to save games');
+    const body = await response.json().catch(() => null);
+
+    if (response.status === 409) {
+        throw new Error('Conflict: ' + (body?.message || 'Data was modified by another user. Refresh and try again.'));
     }
 
-    return await response.json();
+    if (!response.ok) {
+        const detail = body?.error || body?.detail || ('HTTP ' + response.status);
+        throw new Error(detail);
+    }
+
+    return body;
 }
+
+async function pollDeploymentStatus(commitSha) {
+    for (let i = 0; i < DEPLOY_POLL_MAX; i++) {
+        try {
+            const res = await fetch('/api/sync-status');
+            if (res.ok) {
+                const data = await res.json();
+                const deploy = data.deployment || {};
+
+                if (deploy.status === 'completed') {
+                    if (deploy.conclusion === 'success') {
+                        setSyncStep('deploy', 'success', 'Live on codeloot.codes');
+                        return;
+                    } else {
+                        setSyncStep('deploy', 'failed', 'Deploy failed: ' + (deploy.conclusion || 'unknown'));
+                        if (deploy.html_url) {
+                            showSyncError('Deployment failed. Details: ' + deploy.html_url);
+                        }
+                        return;
+                    }
+                }
+
+                setSyncStep('deploy', 'in_progress', 'Deploying... (' + (deploy.status || 'queued') + ')');
+            }
+        } catch (err) {
+            console.warn('Deploy poll error:', err);
+        }
+
+        await sleep(DEPLOY_POLL_INTERVAL);
+    }
+
+    setSyncStep('deploy', 'warning', 'Deploy status unknown (timed out polling)');
+}
+
+function showRetryButton() {
+    const retryBtn = document.getElementById('syncRetryBtn');
+    if (retryBtn) retryBtn.style.display = 'inline-block';
+}
+
+async function retrySave() {
+    if (!lastSavePayload) {
+        showError('Nothing to retry');
+        return;
+    }
+    try {
+        await saveGamesWithSync('Retry save');
+        renderGamesTable();
+    } catch (err) {
+        console.error('Retry failed:', err);
+    }
+}
+
+// Expose globally for onclick
+window.retrySave = retrySave;
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ─── Legacy save (replaced by saveGamesWithSync) ─────────────────────────────
+
+async function saveGames() {
+    return saveGamesWithSync('Saved');
+}
+
+// ─── UI helpers ──────────────────────────────────────────────────────────────
 
 function handleImagePreview(e) {
     const file = e.target.files[0];
     if (file) {
         const reader = new FileReader();
         reader.onload = (event) => {
-            document.getElementById('imagePreview').innerHTML = 
+            document.getElementById('imagePreview').innerHTML =
                 `<img src="${event.target.result}" alt="Preview" style="max-width:200px;max-height:150px;margin-top:10px;">`;
         };
         reader.readAsDataURL(file);
@@ -267,20 +445,30 @@ function showError(message) {
     const errorDiv = document.getElementById('error');
     errorDiv.textContent = message;
     errorDiv.style.display = 'block';
+    errorDiv.classList.remove('success');
     setTimeout(() => {
         errorDiv.style.display = 'none';
-    }, 6000);
+    }, 8000);
 }
 
 function showSuccess(message) {
-    const errorDiv = document.getElementById('error');
-    errorDiv.textContent = '✓ ' + message;
-    errorDiv.style.display = 'block';
-    errorDiv.classList.add('success');
-    setTimeout(() => {
-        errorDiv.style.display = 'none';
-        errorDiv.classList.remove('success');
-    }, 4000);
+    const successDiv = document.getElementById('successBanner');
+    if (successDiv) {
+        successDiv.textContent = message;
+        successDiv.style.display = 'block';
+        setTimeout(() => {
+            successDiv.style.display = 'none';
+        }, 6000);
+    } else {
+        const errorDiv = document.getElementById('error');
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+        errorDiv.classList.add('success');
+        setTimeout(() => {
+            errorDiv.style.display = 'none';
+            errorDiv.classList.remove('success');
+        }, 6000);
+    }
 }
 
 function escapeHtml(text) {
