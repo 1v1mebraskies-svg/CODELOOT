@@ -5,13 +5,79 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CODELOOT Admin Panel</title>
     <link rel="stylesheet" href="admin-style.css">
+    <style>
+        .sync-status {
+            display: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 16px;
+        }
+        .sync-status.syncing {
+            background: rgba(59, 130, 246, 0.12);
+            border: 1px solid rgba(59, 130, 246, 0.4);
+            color: #3b82f6;
+        }
+        .sync-status.sync-success {
+            background: rgba(34, 197, 94, 0.12);
+            border: 1px solid rgba(34, 197, 94, 0.4);
+            color: #22c55e;
+        }
+        .sync-status.sync-error {
+            background: rgba(239, 68, 68, 0.12);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            color: #ef4444;
+        }
+        .sync-status.sync-connected {
+            background: rgba(34, 197, 94, 0.08);
+            border: 1px solid rgba(34, 197, 94, 0.25);
+            color: #22c55e;
+        }
+        .sync-status.sync-warning {
+            background: rgba(245, 158, 11, 0.12);
+            border: 1px solid rgba(245, 158, 11, 0.4);
+            color: #f59e0b;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .sync-spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            vertical-align: middle;
+            margin-right: 6px;
+        }
+        #retryBtn {
+            display: none;
+            margin-top: 8px;
+            padding: 6px 16px;
+            border-radius: 6px;
+            border: 1px solid #ef4444;
+            background: transparent;
+            color: #ef4444;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        #retryBtn:hover {
+            background: rgba(239, 68, 68, 0.1);
+        }
+    </style>
 </head>
 <body>
     <div class="admin-container">
-        <header>
+        <header class="admin-header">
             <h1>CODELOOT Admin Panel</h1>
             <button id="addGameBtn" class="btn btn-primary">+ Add Game</button>
         </header>
+
+        <div id="syncStatus" class="sync-status"></div>
+        <button id="retryBtn" type="button">Retry Save</button>
 
         <div id="loading" class="loading-state">Loading games...</div>
         <div id="error" class="error-state" style="display:none;"></div>
@@ -43,17 +109,17 @@
                 <h2 id="modalTitle">Edit Game</h2>
                 <form id="gameForm">
                     <input type="hidden" id="gameId">
-                    
+
                     <div class="form-group">
                         <label for="gameName">Name *</label>
                         <input type="text" id="gameName" required>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="gameSlug">Slug *</label>
                         <input type="text" id="gameSlug" required>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="gameCategory">Category *</label>
                         <select id="gameCategory" required>
@@ -65,29 +131,29 @@
                             <option value="horror">Horror</option>
                         </select>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="gameDescription">Description *</label>
                         <textarea id="gameDescription" required rows="2"></textarea>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="gameShortDescription">Short Description</label>
                         <textarea id="gameShortDescription" rows="2"></textarea>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="gameLongDescription">Long Description</label>
                         <textarea id="gameLongDescription" rows="3"></textarea>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="gameImage">Image File</label>
                         <input type="file" id="gameImage" accept="image/*">
                         <small>Current: <span id="currentImageName">-</span></small>
                         <div id="imagePreview"></div>
                     </div>
-                    
+
                     <div class="form-group checkbox-group">
                         <label>
                             <input type="checkbox" id="gameFeatured">
@@ -98,9 +164,9 @@
                             Active
                         </label>
                     </div>
-                    
+
                     <div class="form-actions">
-                        <button type="submit" class="btn btn-primary">Save Game</button>
+                        <button type="submit" class="btn btn-primary">Save &amp; Publish</button>
                         <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
                     </div>
                 </form>

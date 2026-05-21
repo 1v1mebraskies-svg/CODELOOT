@@ -1,4 +1,4 @@
-import { getFileContent, getFileSha } from '../lib/github-api.js';
+import { getFileContent, getFileSha, getLatestDeploymentStatus } from '../lib/github-api.js';
 
 const DATA_PATH = 'data/games.json';
 
@@ -7,34 +7,62 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  const errors = [];
+
   try {
-    // Get current file SHA (version)
-    const sha = await getFileSha(DATA_PATH);
-    
-    // Get file content to extract metadata
-    const content = await getFileContent(DATA_PATH);
+    // GitHub file status
+    let sha = null;
     let lastUpdated = null;
     let version = '1.0';
-    
-    if (content) {
-      try {
+    let gameCount = 0;
+
+    try {
+      sha = await getFileSha(DATA_PATH);
+      const content = await getFileContent(DATA_PATH);
+      if (content) {
         const data = JSON.parse(content);
         lastUpdated = data.metadata?.last_updated || null;
         version = data.metadata?.version || '1.0';
-      } catch (e) {
-        // If parsing fails, use defaults
+        gameCount = (data.games || []).length;
       }
+    } catch (e) {
+      errors.push({ component: 'github', error: e.message });
+    }
+
+    // Deployment status
+    let deployment = null;
+    try {
+      deployment = await getLatestDeploymentStatus();
+    } catch (e) {
+      errors.push({ component: 'deployment', error: e.message });
     }
 
     res.json({
-      success: true,
-      version: sha || 'unknown',
-      last_updated: lastUpdated,
-      metadata_version: version,
+      success: errors.length === 0,
+      github: {
+        version: sha || 'unknown',
+        last_updated: lastUpdated,
+        metadata_version: version,
+        game_count: gameCount,
+        connected: !!sha
+      },
+      deployment: deployment ? {
+        state: deployment.state,
+        sha: deployment.sha,
+        environment: deployment.environment,
+        url: deployment.target_url,
+        created_at: deployment.created_at,
+        in_sync: deployment.sha && sha ? deployment.sha.startsWith(sha.substring(0, 7)) : null
+      } : null,
+      errors: errors.length > 0 ? errors : undefined,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    console.error('Failed to get sync status:', error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error('[api/sync-status] Failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      errors: [...errors, { component: 'api', error: error.message }]
+    });
   }
 }
