@@ -99,16 +99,18 @@ function updateCmsBanner(base) {
 }
 
 async function loadGames() {
-    console.log('FART - loadGames() called - loading from /data/games.json');
+    console.log('=== ADMIN DATA LOADER ===');
+    console.log('Exact file path: /Users/jeff/Desktop/CODELOOT/data/games.json');
+    console.log('Exact fetch URL: /data/games.json');
     
     try {
-        const response = await fetch('/data/games.json?v=livefix', { cache: 'no-store' });
-        console.log('FART - Direct fetch status:', response.status);
+        const response = await fetch('/data/games.json', { cache: 'no-store' });
+        console.log('Fetch status:', response.status);
         
         if (response.ok) {
             const data = await response.json();
-            console.log('FART - LIVE GAMES:', data);
-            console.log('FART - Games count:', data.games ? data.games.length : 0);
+            console.log('DIRECT LIVE DATA:', data);
+            console.log('Games count loaded:', data.games ? data.games.length : 0);
             
             gamesData = data;
             currentVersion = null;
@@ -125,15 +127,15 @@ async function loadGames() {
                 });
             });
             
-            console.log('FART - Total games loaded after normalization:', gamesData.games.length);
+            console.log('Total games after normalization:', gamesData.games.length);
             renderGamesTable(gamesData.games);
         } else {
-            console.error('FART - Failed to load games.json, status:', response.status);
+            console.error('Failed to load games.json, status:', response.status);
             gamesData = { games: [], metadata: { version: '1.0', last_updated: '' } };
             renderGamesTable([]);
         }
     } catch (e) {
-        console.error('FART - Error loading games.json:', e);
+        console.error('Error loading games.json:', e);
         gamesData = { games: [], metadata: { version: '1.0', last_updated: '' } };
         renderGamesTable([]);
     }
