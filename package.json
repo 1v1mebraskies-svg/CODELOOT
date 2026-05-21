@@ -5,9 +5,12 @@
   "scripts": {
     "dev": "vercel dev",
     "build": "echo 'Static site - no build needed'",
-    "start": "vercel dev"
+    "start": "vercel dev",
+    "sync:start": "node scripts/auto-sync.js",
+    "sync:stop": "pkill -f 'node scripts/auto-sync.js'"
   },
   "dependencies": {
-    "@vercel/blob": "^2.4.0"
+    "@vercel/blob": "^2.4.0",
+    "chokidar": "^3.5.3"
   }
 }
