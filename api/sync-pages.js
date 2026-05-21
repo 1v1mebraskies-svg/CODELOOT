@@ -1,12 +1,12 @@
-import fs from 'fs';
-import path from 'path';
-import { getFileContent } from '../lib/github-api.js';
-import { syncGamePagesToGithub } from '../lib/site-sync-github.js';
+const fs = require('fs');
+const path = require('path');
+const { getFileContent } = require('../lib/github-api.js');
+const { syncGamePagesToGithub } = require('../lib/site-sync-github.js');
 
 const DATA_PATH = 'data/games.json';
 const LOCAL_DATA_FILE = path.join(process.cwd(), 'data', 'games.json');
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -38,4 +38,4 @@ export default async function handler(req, res) {
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
-}
+};

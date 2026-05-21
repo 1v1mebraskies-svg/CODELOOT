@@ -19,8 +19,14 @@ let autosaveTimer = null;
 let pollTimer = null;
 let isAutosaving = false;
 let hasUnsavedChanges = false;
-const AUTOSAVE_DELAY = 3000; // 3 seconds of inactivity before autosave
-const POLL_INTERVAL = 10000; // Check for remote changes every 10 seconds
+let saveQueue = Promise.resolve();
+let saveInFlight = false;
+const AUTOSAVE_DELAY = 1500;
+const AUTOSAVE_MAX_RETRIES = 4;
+const AUTOSAVE_RETRY_BASE_MS = 1500;
+const LIVE_VERIFY_TIMEOUT_MS = 25000;
+const LIVE_VERIFY_POLL_MS = 600;
+const POLL_INTERVAL = 10000;
 
 function checkAuth() {
     const auth = sessionStorage.getItem('codeloot_admin_auth');
@@ -53,7 +59,46 @@ function confirmSensitiveAction(action) {
     return password === SENSITIVE_PASSWORD;
 }
 
-function updateCmsBanner(base) {
+function formatDeployLog(status) {
+    if (!status || !status.deployment_context) return '';
+    const ctx = status.deployment_context;
+    const gh = status.github && !status.github.error ? status.github : null;
+    const lines = [
+        'Branch: <code>' + (ctx.vercel_git_branch || 'main (API writes)') + '</code>',
+        'Deploy env: <code>' + (ctx.vercel_env || 'local') + '</code>',
+        'GitHub token: <code>' + (ctx.github_token_set ? 'set' : 'MISSING') + '</code>',
+    ];
+    if (gh) {
+        lines.push('Latest GitHub commit: <code>' + (gh.sha || '').slice(0, 7) + '</code> — ' + escHtml(gh.message || ''));
+    }
+    if (status.games_json_sha) {
+        lines.push('Live games.json SHA: <code>' + status.games_json_sha.slice(0, 7) + '</code>');
+    }
+    return '<br><span style="color:var(--muted);font-size:12px">' + lines.join('<br>') + '</span>';
+}
+
+function escHtml(text) {
+    return String(text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+async function loadDeployStatus() {
+    if (!CMS || !CMS.cmsFetch) return null;
+    try {
+        const res = await CMS.cmsFetch('/api/deploy-status');
+        if (!res.ok) return null;
+        const status = await res.json();
+        console.log('[codeloot-deploy]', status);
+        return status;
+    } catch (e) {
+        console.warn('[codeloot-deploy] status unavailable:', e.message);
+        return null;
+    }
+}
+
+function updateCmsBanner(base, deployStatus) {
     let el = document.getElementById('cms-status');
     if (!el) {
         el = document.createElement('div');
@@ -73,9 +118,10 @@ function updateCmsBanner(base) {
         el.style.color = 'var(--text)';
         el.innerHTML =
             '<strong>✓ Live Autosync Active</strong> — Changes save instantly to GitHub (shared data source)<br>' +
-            '<code>data/games.json</code> — Admin &amp; public site use same data<br>' +
+            '<code>data/games.json</code> — Admin reads live GitHub via <code>/api/games</code><br>' +
             '<span style="color:var(--muted)">Server: ' + base + ' · ' +
-            '<a href="' + base + '/index.html" target="_blank" rel="noopener">View live site</a></span>';
+            '<a href="' + base + '/index.html" target="_blank" rel="noopener">View live site</a></span>' +
+            formatDeployLog(deployStatus);
         const saveBtn = document.getElementById('save-game-btn');
         const addBtn = document.getElementById('add-game-btn');
         if (saveBtn) saveBtn.disabled = false;
@@ -248,20 +294,134 @@ async function uploadImage(slug, file) {
     return data;
 }
 
-async function saveGames(skipVersionCheck = false) {
+function persistLocalGamesData() {
     gamesData.metadata.last_updated = new Date().toISOString();
-    
-    // Always save to localStorage as backup
     try {
         localStorage.setItem('codeloot_games_data', JSON.stringify(gamesData));
-        console.log('Saved to localStorage as backup');
     } catch (e) {
         console.warn('Failed to save to localStorage:', e.message);
     }
-    
+    if (D && D.clearGamesCache) {
+        D.clearGamesCache();
+    }
+    renderGamesTable(gamesData.games);
+}
+
+function enqueueSave(task) {
+    const run = saveQueue.then(task);
+    saveQueue = run.catch(function () {
+        /* keep queue alive after failure */
+    });
+    return run;
+}
+
+function isEditorOpen() {
+    const modal = document.getElementById('game-modal');
+    return modal && modal.classList.contains('active');
+}
+
+function syncOpenEditorToGamesData() {
+    if (!isEditorOpen() || !gamesData) return null;
+    const id = document.getElementById('game-id').value;
+    const formGame = readFormGame();
+    if (!formGame.name || !formGame.slug) return null;
+
+    if (id) {
+        const index = gamesData.games.findIndex(function (g) {
+            return String(g.id) === String(id);
+        });
+        if (index === -1) return null;
+        gamesData.games[index] = Object.assign({}, gamesData.games[index], formGame);
+        return { game: gamesData.games[index], oldSlug: null };
+    }
+    return null;
+}
+
+async function refreshGamesFromRemote(expectedVersion) {
+    const url = GAMES_API_URL + '?t=' + Date.now();
+    let data = null;
+    try {
+        if (cmsConnected && CMS && CMS.cmsFetch) {
+            const res = await CMS.cmsFetch('/api/games');
+            if (res.ok) data = await res.json();
+        } else {
+            const res = await fetch(url, { cache: 'no-store' });
+            if (res.ok) data = await res.json();
+        }
+    } catch (e) {
+        console.warn('Refresh games failed:', e.message);
+        return false;
+    }
+
+    if (!data || !Array.isArray(data.games)) return false;
+
+    const remoteVersion = data._version || null;
+    delete data._version;
+    delete data._timestamp;
+    delete data._source;
+
+    if (expectedVersion && remoteVersion && remoteVersion !== expectedVersion) {
+        return false;
+    }
+
+    gamesData = data;
+    currentVersion = remoteVersion || currentVersion;
+    renderGamesTable(gamesData.games);
+    return true;
+}
+
+function delay(ms) {
+    return new Promise(function (resolve) {
+        setTimeout(resolve, ms);
+    });
+}
+
+async function waitForLivePublish(expectedSha) {
+    if (!expectedSha) {
+        return { verified: false, reason: 'no-sha' };
+    }
+    if (!cmsConnected || !CMS || !CMS.cmsFetch) {
+        return { verified: false, reason: 'cms-offline' };
+    }
+
+    const deadline = Date.now() + LIVE_VERIFY_TIMEOUT_MS;
+    let syncStatusAvailable = true;
+
+    while (Date.now() < deadline) {
+        try {
+            const res = await CMS.cmsFetch('/api/sync-status');
+            if (res.status === 404 || res.status === 405) {
+                syncStatusAvailable = false;
+                break;
+            }
+            const data = await res.json();
+            if (data.success && data.version === expectedSha) {
+                return { verified: true, version: data.version };
+            }
+        } catch (e) {
+            console.warn('Live verify poll failed:', e.message);
+        }
+        await delay(LIVE_VERIFY_POLL_MS);
+    }
+
+    if (!syncStatusAvailable) {
+        const ok = await refreshGamesFromRemote(expectedSha);
+        return { verified: ok, reason: ok ? 'games-api-fallback' : 'games-api-fallback-failed' };
+    }
+
+    return { verified: false, reason: 'timeout' };
+}
+
+async function performGithubSave(skipVersionCheck, saveMeta) {
+    const meta = saveMeta || {};
+    persistLocalGamesData();
+
     const headers = { 'Content-Type': 'application/json' };
     if (!skipVersionCheck && currentVersion) {
         headers['X-If-Version'] = currentVersion;
+    }
+    if (meta.changedSlugs && meta.changedSlugs.length) {
+        headers['X-Changed-Slugs'] = meta.changedSlugs.join(',');
     }
 
     let res;
@@ -295,13 +455,46 @@ async function saveGames(skipVersionCheck = false) {
         throw new Error(result.error || result.message || 'Save failed');
     }
 
-    currentVersion = result.version || currentVersion;
-    if (D && D.clearGamesCache) {
-        D.clearGamesCache();
+    const expectedSha = result.games_json_sha || result.version;
+    currentVersion = expectedSha || result.version || currentVersion;
+    if (result.github_commit) {
+        console.log('[codeloot-deploy] github commit:', result.github_commit);
     }
+
+    const live = await waitForLivePublish(expectedSha);
+    if (!live.verified) {
+        throw new Error('GitHub saved but live site did not confirm in time. Try Reload from Data.');
+    }
+
+    await refreshGamesFromRemote(expectedSha);
     clearUnsavedChanges();
-    await loadGames();
     return result;
+}
+
+async function saveGamesWithRetry(skipVersionCheck, saveMeta, attempt) {
+    const tryNum = attempt || 0;
+    try {
+        return await performGithubSave(skipVersionCheck, saveMeta);
+    } catch (err) {
+        if (err instanceof ConflictError || tryNum >= AUTOSAVE_MAX_RETRIES) {
+            throw err;
+        }
+        const waitMs = AUTOSAVE_RETRY_BASE_MS * Math.pow(2, tryNum);
+        setSyncStatus('Retrying save (' + (tryNum + 2) + '/' + (AUTOSAVE_MAX_RETRIES + 1) + ')...', 'warning');
+        await delay(waitMs);
+        return saveGamesWithRetry(skipVersionCheck, saveMeta, tryNum + 1);
+    }
+}
+
+async function saveGames(skipVersionCheck, saveMeta) {
+    return enqueueSave(async function () {
+        saveInFlight = true;
+        try {
+            return await saveGamesWithRetry(skipVersionCheck, saveMeta);
+        } finally {
+            saveInFlight = false;
+        }
+    });
 }
 
 // Custom error for conflicts
@@ -318,28 +511,33 @@ function triggerAutosave() {
     if (autosaveTimer) {
         clearTimeout(autosaveTimer);
     }
-    
-    setSyncStatus('Autosaving in 3s...', 'warning');
-    
+
+    setSyncStatus('Autosaving in ' + Math.round(AUTOSAVE_DELAY / 1000) + 's...', 'warning');
+
     autosaveTimer = setTimeout(async function() {
-        if (!hasUnsavedChanges || isAutosaving) {
-            setSyncStatus('');
+        if (!hasUnsavedChanges || isAutosaving || saveInFlight) {
+            if (!hasUnsavedChanges) setSyncStatus('');
             return;
         }
-        
+
         isAutosaving = true;
         setSyncStatus('Autosaving...', 'warning');
-        
+
         try {
-            await saveGames();
+            const synced = syncOpenEditorToGamesData();
+            const changedSlugs = synced && synced.game ? [synced.game.slug] : [];
+            persistLocalGamesData();
+            await saveGames(false, { changedSlugs: changedSlugs });
             setSyncStatus('Autosaved successfully', 'success');
-            setTimeout(() => setSyncStatus(''), 2000);
+            setTimeout(function () {
+                setSyncStatus('');
+            }, 2000);
         } catch (err) {
             console.error('Autosave failed:', err);
             if (err instanceof ConflictError) {
                 setSyncStatus('Conflict detected - please refresh', 'error');
             } else {
-                setSyncStatus('Autosave failed - ' + err.message, 'error');
+                setSyncStatus('Autosave failed - retrying on next edit', 'error');
             }
         } finally {
             isAutosaving = false;
@@ -349,7 +547,7 @@ function triggerAutosave() {
 
 // Poll for remote changes
 async function pollForRemoteChanges() {
-    if (!cmsConnected || !currentVersion) {
+    if (!cmsConnected || !currentVersion || saveInFlight || isAutosaving) {
         return;
     }
     
@@ -398,7 +596,7 @@ function applyGameImage(game, uploadedFilename) {
     game.image = D && D.gameImageFile ? D.gameImageFile(game) : game.slug + '.png';
 }
 
-async function publishGame(game, imageFile) {
+async function publishGame(game, imageFile, saveMeta) {
     let uploadedName = null;
     let imageFiles = [];
     if (imageFile) {
@@ -407,8 +605,11 @@ async function publishGame(game, imageFile) {
         imageFiles = up.files || ['assets/img/' + up.image];
     }
     applyGameImage(game, uploadedName);
-    gamesData.metadata.last_updated = new Date().toISOString();
-    const result = await saveGames();
+    const meta = saveMeta || {};
+    if (game.slug && meta.changedSlugs && meta.changedSlugs.indexOf(game.slug) === -1) {
+        meta.changedSlugs.push(game.slug);
+    }
+    const result = await saveGames(false, meta);
     result.imageFiles = imageFiles;
     return result;
 }
@@ -622,9 +823,8 @@ function readFormGame() {
 
 async function handleSave(e) {
     e.preventDefault();
-    
+
     const id = document.getElementById('game-id').value;
-    // Require sensitive password for editing existing games
     if (id && !confirmSensitiveAction('overwrite this game')) {
         alert('Incorrect password or cancelled. Editing existing games requires sensitive action password.');
         return;
@@ -632,7 +832,11 @@ async function handleSave(e) {
 
     const btn = document.getElementById('save-game-btn');
     btn.disabled = true;
-    setSaveStatus('Saving...', false);
+    setSaveStatus('Saving locally...', false);
+
+    let game;
+    let oldSlug = null;
+    const saveMeta = { changedSlugs: [] };
 
     try {
         const formGame = readFormGame();
@@ -640,17 +844,15 @@ async function handleSave(e) {
             throw new Error('Name and slug are required');
         }
 
-        let game;
-
         if (id) {
             const index = gamesData.games.findIndex(function (g) {
                 return String(g.id) === String(id);
             });
             if (index === -1) throw new Error('Game not found');
+            oldSlug = gamesData.games[index].slug;
             game = Object.assign({}, gamesData.games[index], formGame);
             gamesData.games[index] = game;
         } else {
-            // Check for duplicate slug
             const existingSlug = D.findGameBySlug(gamesData.games, formGame.slug);
             if (existingSlug) {
                 throw new Error('A game with slug "' + formGame.slug + '" already exists. Please use a different slug.');
@@ -662,55 +864,57 @@ async function handleSave(e) {
             gamesData.games.push(game);
         }
 
-        setSaveStatus('Publishing...', false);
-        
-        const result = await publishGame(game, pendingImageFile);
+        saveMeta.changedSlugs.push(game.slug);
+        if (oldSlug && oldSlug !== game.slug) {
+            saveMeta.changedSlugs.push(oldSlug);
+        }
+
+        persistLocalGamesData();
+        setSaveStatus('Publishing to GitHub...', false);
+
+        const result = await publishGame(game, pendingImageFile, saveMeta);
         pendingImageFile = null;
 
         document.getElementById('game-modal').classList.remove('active');
-        renderGamesTable(gamesData.games);
-        setSaveStatus('');
+        setSaveStatus('Save successful', false);
 
-        const base = CMS.getApiBase();
         const fileList = formatPublishedFiles(result, game);
-        
-        let message = 'Published successfully!\n\n';
-        if (result.localStorageOnly) {
-            message += '⚠️ CMS is offline - saved to localStorage only.\n';
-            message += 'Changes will sync when CMS reconnects.\n\n';
-        } else {
-            message += '✓ Saved to GitHub (shared data source)\n';
-            message += '✓ Live site updated instantly\n\n';
-        }
+        let message = 'Save successful!\n\n';
+        message += '✓ Saved to GitHub (shared data source)\n';
+        message += '✓ Live site confirmed updated\n\n';
         message += 'Updated files:\n  · ' + fileList + '\n\n';
         if (cmsConnected) {
             message += 'Admin and public site now use the same data.';
         }
         alert(message);
+        setTimeout(function () {
+            setSaveStatus('');
+        }, 2500);
     } catch (err) {
         console.error(err);
         setSaveStatus(err.message || 'Save failed', true);
-        
+
         if (err instanceof ConflictError) {
-            // Show conflict resolution dialog
             const shouldOverwrite = confirm(
                 'Conflict detected: The data was modified by another user.\n\n' +
                 'Click OK to overwrite their changes with your changes.\n' +
                 'Click Cancel to refresh and see their changes.'
             );
             if (shouldOverwrite) {
-                // Force save without version check
                 try {
-                    const result = await saveGames(true);
+                    setSaveStatus('Publishing to GitHub...', false);
+                    await saveGames(true, saveMeta);
                     document.getElementById('game-modal').classList.remove('active');
-                    renderGamesTable(gamesData.games);
-                    setSaveStatus('');
-                    alert('Published successfully (overwrote remote changes)');
+                    persistLocalGamesData();
+                    setSaveStatus('Save successful', false);
+                    alert('Save successful (overwrote remote changes)');
+                    setTimeout(function () {
+                        setSaveStatus('');
+                    }, 2500);
                 } catch (retryErr) {
                     alert('Failed to overwrite: ' + retryErr.message);
                 }
             } else {
-                // Refresh to get latest data
                 await loadGames();
                 alert('Data refreshed. Please try again.');
             }
@@ -731,13 +935,19 @@ function deleteGame(id) {
     if (!confirm('Delete this game from the website? This removes its page and homepage card.')) return;
 
     const n = String(id);
+    const removed = gamesData.games.find(function (g) {
+        return String(g.id) === n;
+    });
     gamesData.games = gamesData.games.filter(function (g) {
         return String(g.id) !== n;
     });
 
-    saveGames().then(function () {
-        renderGamesTable(gamesData.games);
-    }).catch(function (err) {
+    persistLocalGamesData();
+    const saveMeta = {
+        changedSlugs: removed && removed.slug ? [] : [],
+    };
+
+    saveGames(false, saveMeta).catch(function (err) {
         alert('Delete failed: ' + err.message);
     });
 }
@@ -910,13 +1120,14 @@ async function initAdmin() {
     }
 
     const base = CMS ? await CMS.connectCms() : null;
-    updateCmsBanner(base);
+    const deployStatus = base ? await loadDeployStatus() : null;
+    updateCmsBanner(base, deployStatus);
 
     try {
         await loadGames();
     } catch (err) {
         console.error('Could not load games:', err.message);
-        updateCmsBanner(null);
+        updateCmsBanner(null, null);
     }
 
     if (cmsConnected) {

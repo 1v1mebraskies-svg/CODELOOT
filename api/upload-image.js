@@ -1,10 +1,10 @@
-import multer from 'multer';
-import { uploadImage } from '../lib/github-api.js';
+const multer = require('multer');
+const { uploadImage } = require('../lib/github-api.js');
 
 const storage = multer.memoryStorage();
-const upload = multer({ 
+const upload = multer({
   storage: storage,
-  limits: { fileSize: 15 * 1024 * 1024 }
+  limits: { fileSize: 15 * 1024 * 1024 },
 });
 
 function runMiddleware(req, res, fn) {
@@ -26,7 +26,7 @@ function extensionForUpload(filename, mimetype) {
     'image/webp': '.webp',
     'image/gif': '.gif',
   };
-  
+
   if (mimetype && MIME_TO_EXT[mimetype]) {
     return MIME_TO_EXT[mimetype];
   }
@@ -36,26 +36,26 @@ function extensionForUpload(filename, mimetype) {
   return '.png';
 }
 
-export const config = {
+module.exports.config = {
   api: {
     bodyParser: false,
   },
 };
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
     await runMiddleware(req, res, upload.single('image'));
-    
+
     const slug = (req.body.slug || '').trim();
-    
+
     if (!slug) {
       return res.status(400).json({ success: false, error: 'Missing slug' });
     }
-    
+
     const file = req.file;
     if (!file || !file.buffer) {
       return res.status(400).json({ success: false, error: 'Missing image file' });
@@ -64,7 +64,6 @@ export default async function handler(req, res) {
     const ext = extensionForUpload(file.originalname, file.mimetype);
     const filename = slug + ext;
 
-    // Upload to GitHub (shared data source)
     const result = await uploadImage(slug, file.buffer, filename, file.mimetype);
 
     res.json({
@@ -73,10 +72,10 @@ export default async function handler(req, res) {
       url: result.url,
       path: result.path,
       files: [result.path],
-      message: 'Uploaded to GitHub - Live site updated instantly'
+      message: 'Uploaded to GitHub - Live site updated instantly',
     });
   } catch (error) {
     console.error('Image upload error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
-}
+};

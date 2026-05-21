@@ -1,7 +1,11 @@
-import fs from 'fs';
-import path from 'path';
-import { getFileContent, createOrUpdateFile, getFileSha } from '../lib/github-api.js';
-import { syncGamePagesToGithub, removeGamePagesFromGithub } from '../lib/site-sync-github.js';
+const fs = require('fs');
+const path = require('path');
+const { getFileContent, createOrUpdateFile, getFileSha } = require('../lib/github-api.js');
+const { syncGamePagesToGithub, removeGamePagesFromGithub } = require('../lib/site-sync-github.js');
+const {
+  logDeploymentEvent,
+  triggerVercelDeployHook,
+} = require('../lib/deploy-log.js');
 
 const DATA_PATH = 'data/games.json';
 const LOCAL_DATA_FILE = path.join(process.cwd(), 'data', 'games.json');
@@ -23,7 +27,9 @@ function normalizeGamesData(data) {
   return data;
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
+
   if (req.method === 'GET') {
     try {
       let data = null;
@@ -52,12 +58,14 @@ export default async function handler(req, res) {
           metadata: { version: '1.0', last_updated: '' },
           _version: null,
           _timestamp: new Date().toISOString(),
+          _source: 'empty',
         });
       }
 
       data = normalizeGamesData(data);
       data._version = sha;
       data._timestamp = new Date().toISOString();
+      data._source = sha ? 'github' : 'local';
       res.json(data);
     } catch (error) {
       console.error('Failed to read games data:', error);
@@ -89,7 +97,7 @@ export default async function handler(req, res) {
       }
       gamesData.metadata.last_updated = new Date().toISOString();
 
-      const { _version, _timestamp, ...dataToSave } = gamesData;
+      const { _version, _timestamp, _source, ...dataToSave } = gamesData;
       const content = JSON.stringify(dataToSave, null, 2);
 
       const activeCount = (gamesData.games || []).filter((g) => g.active !== false).length;
@@ -111,9 +119,16 @@ export default async function handler(req, res) {
       const newSlugs = new Set((dataToSave.games || []).map((g) => g.slug).filter(Boolean));
       const deletedSlugs = previousSlugs.filter((s) => !newSlugs.has(s));
 
+      const changedHeader = req.headers['x-changed-slugs'];
+      const changedSlugs = (typeof changedHeader === 'string' ? changedHeader.split(',') : [])
+        .map((s) => s.trim())
+        .filter(Boolean);
+
       let pageSync = { files: ['data/games.json'], removed: [] };
       try {
-        pageSync = await syncGamePagesToGithub(dataToSave);
+        pageSync = await syncGamePagesToGithub(dataToSave, {
+          slugs: changedSlugs.length ? changedSlugs : null,
+        });
         if (deletedSlugs.length) {
           const removedPages = await removeGamePagesFromGithub(deletedSlugs);
           pageSync.removed = (pageSync.removed || []).concat(removedPages);
@@ -123,19 +138,38 @@ export default async function handler(req, res) {
         pageSync.error = syncError.message;
       }
 
+      const gamesJsonSha = await getFileSha(DATA_PATH).catch(() => result.sha);
+
+      triggerVercelDeployHook('games-save')
+        .then((deployHook) => {
+          logDeploymentEvent('games-save', {
+            commit: result.commit,
+            sha: result.sha,
+            activeCount,
+            deployHook,
+          });
+        })
+        .catch((hookErr) => {
+          console.error('[deploy-log] Deploy hook error:', hookErr.message);
+        });
+
       res.json({
         success: true,
         synced: activeCount,
         files: pageSync.files || ['data/games.json'],
         removed: pageSync.removed || [],
         version: result.sha,
+        games_json_sha: gamesJsonSha,
+        github_commit: result.commit,
         message: 'Saved to GitHub — live site updated',
+        page_sync_count: pageSync.synced ?? null,
       });
     } catch (error) {
       console.error('Failed to save games data to GitHub:', error);
+      logDeploymentEvent('games-save-error', { error: error.message });
       res.status(500).json({ success: false, error: error.message });
     }
   } else {
     res.status(405).json({ error: 'Method not allowed' });
   }
-}
+};
