@@ -1,5 +1,5 @@
 import multer from 'multer';
-import { put } from '@vercel/blob';
+import { uploadImage } from '../lib/github-api.js';
 
 const storage = multer.memoryStorage();
 const upload = multer({ 
@@ -64,18 +64,15 @@ export default async function handler(req, res) {
     const ext = extensionForUpload(file.originalname, file.mimetype);
     const filename = slug + ext;
 
-    // Upload to Vercel Blob
-    const blob = await put(filename, file.buffer, {
-      access: 'public',
-      contentType: file.mimetype,
-    });
+    // Upload to GitHub repository
+    const result = await uploadImage(slug, file.buffer, filename, file.mimetype);
 
     res.json({
       success: true,
       image: filename,
-      url: blob.url,
-      path: blob.url,
-      files: [blob.url],
+      url: result.url,
+      path: result.path,
+      files: [result.url],
     });
   } catch (error) {
     console.error('Image upload error:', error);
