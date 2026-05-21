@@ -88,9 +88,13 @@ function updateCmsBanner(base) {
 
 async function loadGames() {
     console.log('[PRODUCTION] loadGames() called - attempting to fetch /data/games.json');
+    console.log('[PRODUCTION] Current hostname:', window.location.hostname);
+    console.log('[PRODUCTION] Current protocol:', window.location.protocol);
+    console.log('[PRODUCTION] Current pathname:', window.location.pathname);
     try {
         const response = await fetch('/data/games.json', { cache: 'no-store' });
         console.log('[PRODUCTION] fetch response status:', response.status, response.ok);
+        console.log('[PRODUCTION] fetch response content-type:', response.headers.get('content-type'));
         
         if (response.ok) {
             const data = await response.json();
