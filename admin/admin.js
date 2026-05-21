@@ -58,8 +58,9 @@ function updateCmsBanner(base) {
         el.style.color = 'var(--text)';
         el.innerHTML =
             '<strong>CMS connected</strong> — Save &amp; Publish writes real files to your project:<br>' +
-            '<code>data/games.json</code>, <code>index.html</code>, <code>games/*.html</code>, <code>assets/img/*</code><br>' +
-            '<span style="color:var(--muted)">Server: ' + base + ' · ' +
+            '<code>data/games.json</code>, <code>index.html</code>, <code>games/*.html</code><br>' +
+            '<span style="color:var(--muted)">Images uploaded to Vercel Blob Storage · ' +
+            'Server: ' + base + ' · ' +
             '<a href="' + base + '/index.html" target="_blank" rel="noopener">View site</a></span>';
         document.getElementById('save-game-btn').disabled = false;
         document.getElementById('add-game-btn').disabled = false;
@@ -178,23 +179,23 @@ async function saveGames() {
     return result;
 }
 
-function applyGameImage(game, uploadedFilename) {
-    if (uploadedFilename) {
-        game.image = uploadedFilename;
+function applyGameImage(game, uploadedUrl) {
+    if (uploadedUrl) {
+        game.image = uploadedUrl;
         return;
     }
     game.image = D.gameImageFile(game);
 }
 
 async function publishGame(game, imageFile) {
-    let uploadedName = null;
+    let uploadedUrl = null;
     let imageFiles = [];
     if (imageFile) {
         const up = await uploadImage(game.slug, imageFile);
-        uploadedName = up.image;
-        imageFiles = up.files || ['assets/img/' + up.image];
+        uploadedUrl = up.url || up.path;
+        imageFiles = up.files || [up.url || up.path];
     }
-    applyGameImage(game, uploadedName);
+    applyGameImage(game, uploadedUrl);
     gamesData.metadata.last_updated = new Date().toISOString();
     const result = await saveGames();
     result.imageFiles = imageFiles;
@@ -248,7 +249,15 @@ function formatRedeemLines(lines) {
 }
 
 function imagePreviewUrl(game) {
-    if (!game || !game.slug) return '';
+    if (!game) return '';
+    
+    // If image is already a full URL (starts with http), return it directly
+    if (game.image && (game.image.startsWith('http://') || game.image.startsWith('https://'))) {
+        return game.image;
+    }
+    
+    // Otherwise, use local path for backward compatibility
+    if (!game.slug) return '';
     const base = CMS.getApiBase() || '';
     return base + '/assets/img/' + D.gameImageFile(game);
 }

@@ -123,8 +123,17 @@
     }
 
     function gameImageSrc(game, siteRoot) {
+        if (!game) return 'code-loot-hero.png';
+        
+        // If image is already a full URL (starts with http), return it directly
+        if (game.image && (game.image.startsWith('http://') || game.image.startsWith('https://'))) {
+            return game.image;
+        }
+        
+        // Otherwise, use local path for backward compatibility
         const root = siteRoot === '.' ? '' : siteRoot || '';
-        return root + '/assets/img/' + gameImageFile(game);
+        const filename = gameImageFile(game);
+        return root + '/assets/img/' + filename;
     }
 
     function escapeHtml(str) {

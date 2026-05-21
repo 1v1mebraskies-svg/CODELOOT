@@ -1,9 +1,5 @@
-import fs from 'fs';
-import path from 'path';
 import multer from 'multer';
-import { IncomingMessage } from 'http';
-
-const ASSETS_IMG = path.join(process.cwd(), 'assets', 'img');
+import { put } from '@vercel/blob';
 
 const storage = multer.memoryStorage();
 const upload = multer({ 
@@ -34,20 +30,10 @@ function extensionForUpload(filename, mimetype) {
   if (mimetype && MIME_TO_EXT[mimetype]) {
     return MIME_TO_EXT[mimetype];
   }
-  let ext = path.extname(filename || '').toLowerCase();
-  if (ext === '.jpeg') ext = '.jpg';
-  if (['.png', '.jpg', '.webp', '.gif'].includes(ext)) return ext;
+  let ext = (filename || '').split('.').pop().toLowerCase();
+  if (ext === 'jpeg') ext = 'jpg';
+  if (['png', 'jpg', 'webp', 'gif'].includes(ext)) return '.' + ext;
   return '.png';
-}
-
-function removeOldSlugImages(slug, keepName) {
-  if (!fs.existsSync(ASSETS_IMG)) return;
-  fs.readdirSync(ASSETS_IMG).forEach(name => {
-    if (name === keepName) return;
-    if (name.startsWith(slug + '.') || name.startsWith(slug + '-banner.')) {
-      fs.unlinkSync(path.join(ASSETS_IMG, name));
-    }
-  });
 }
 
 export const config = {
@@ -76,22 +62,23 @@ export default async function handler(req, res) {
     }
 
     const ext = extensionForUpload(file.originalname, file.mimetype);
-    const outName = slug + ext;
+    const filename = slug + ext;
 
-    fs.mkdirSync(ASSETS_IMG, { recursive: true });
-    removeOldSlugImages(slug, outName);
-    
-    const outPath = path.join(ASSETS_IMG, outName);
-    fs.writeFileSync(outPath, file.buffer);
+    // Upload to Vercel Blob
+    const blob = await put(filename, file.buffer, {
+      access: 'public',
+      contentType: file.mimetype,
+    });
 
     res.json({
       success: true,
-      image: outName,
-      path: 'assets/img/' + outName,
-      files: ['assets/img/' + outName],
+      image: filename,
+      url: blob.url,
+      path: blob.url,
+      files: [blob.url],
     });
   } catch (error) {
-    console.error(error);
+    console.error('Image upload error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
