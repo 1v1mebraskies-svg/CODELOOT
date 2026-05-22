@@ -29,6 +29,10 @@
       "destination": "/games/:path*"
     },
     {
+      "source": "/js/:path*",
+      "destination": "/js/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
