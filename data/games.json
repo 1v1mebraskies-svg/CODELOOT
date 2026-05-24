@@ -2,14 +2,14 @@
   "games": [
     {
       "id": 1,
-      "name": "Anime Defenders",
+      "name": "Anime Defender",
       "slug": "anime-defenders",
       "description": "Gems, trait crystals, rerolls, and summon currency rewards.",
       "category": "anime",
       "featured": true,
       "active": true,
       "created_at": "2026-01-01T00:00:00Z",
-      "updated_at": "2026-05-22T00:18:44.127Z",
+      "updated_at": "2026-05-24T06:15:15.485Z",
       "codes": [
         {
           "id": 1,
@@ -1432,6 +1432,6 @@
   ],
   "metadata": {
     "version": "1.0",
-    "last_updated": "2026-05-24T06:15:09.749Z"
+    "last_updated": "2026-05-24T06:15:20.225Z"
   }
 }
