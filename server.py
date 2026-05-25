@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CodeLoot CMS — static site server with automatic page sync."""
+"""CodeLoot CMS — static site server with manual publish system."""
 import cgi
 import json
 import sys
@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT / 'scripts'))
-from site_generator import normalize_all, sync_all  # noqa: E402
+from site_generator import normalize_all  # noqa: E402
 from html_importer import import_html_games  # noqa: E402
 from image_utils import (  # noqa: E402
     ASSETS_IMG,
@@ -52,9 +52,6 @@ class CMSHandler(SimpleHTTPRequestHandler):
         if self.path.startswith('/api/upload-image'):
             self._upload_image()
             return
-        if self.path == '/api/sync-pages':
-            self._sync_pages()
-            return
         if self.path == '/api/import-games':
             self._import_games()
             return
@@ -95,32 +92,20 @@ class CMSHandler(SimpleHTTPRequestHandler):
             with open(DATA_FILE, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2)
 
-            result = sync_all(data)
             self._send_json({
                 'success': True,
-                'synced': result['count'],
-                'files': result['files'],
+                'files': ['data/games.json'],
             })
-        except Exception as e:
-            self._send_json({'success': False, 'error': str(e)}, status=500)
-
-    def _sync_pages(self):
-        try:
-            data = self._read_games()
-            result = sync_all(data)
-            self._send_json({'success': True, 'synced': result['count'], 'files': result['files']})
         except Exception as e:
             self._send_json({'success': False, 'error': str(e)}, status=500)
 
     def _import_games(self):
         try:
             data = import_html_games()
-            result = sync_all(data)
             self._send_json({
                 'success': True,
                 'imported': len(data.get('games', [])),
-                'synced': result['count'],
-                'files': result['files'],
+                'files': ['data/games.json'],
             })
         except Exception as e:
             self._send_json({'success': False, 'error': str(e)}, status=500)

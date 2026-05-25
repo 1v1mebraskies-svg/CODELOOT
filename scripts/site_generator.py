@@ -404,30 +404,6 @@ def sync_index(data):
     return ['index.html']
 
 
-def sync_all(data):
-    games = data.get('games', [])
-    active = [g for g in games if g.get('active') is not False]
-    valid_slugs = {g.get('slug') for g in games if g.get('slug')}
-    GAMES_DIR.mkdir(parents=True, exist_ok=True)
-    published = ['data/games.json']
-
-    for game in active:
-        slug = game.get('slug')
-        if not slug:
-            continue
-        path = GAMES_DIR / f'{slug}.html'
-        path.write_text(generate_game_page(game, active), encoding='utf-8')
-        published.append(f'games/{slug}.html')
-
-    for fp in GAMES_DIR.glob('*.html'):
-        if fp.stem not in valid_slugs:
-            fp.unlink()
-            published.append(f'(removed) games/{fp.name}')
-
-    published.extend(sync_index(data))
-    return {'count': len(active), 'files': published}
-
-
 def normalize_game(game):
     if not game.get('short_description') and game.get('description'):
         game['short_description'] = game['description']

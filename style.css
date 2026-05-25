@@ -905,6 +905,85 @@ p {
     background: linear-gradient(135deg, var(--mint), var(--cyan));
 }
 
+.expired-code-card {
+    opacity: 0.7;
+    background: rgba(6, 12, 25, 0.42);
+}
+
+.expired-code-card .copy-button {
+    display: none;
+}
+
+.status-badge {
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: var(--radius-pill);
+    background: rgba(255, 107, 136, 0.18);
+    color: var(--danger);
+}
+
+.expired-codes-section {
+    margin-top: 32px;
+}
+
+.expired-codes-section .panel-heading {
+    margin-bottom: 16px;
+}
+
+.faq-section {
+    margin-top: 24px;
+}
+
+.faq-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.faq-item h3 {
+    margin: 0 0 8px;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.faq-item p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.internal-links-section {
+    margin-top: 24px;
+}
+
+.internal-links-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.internal-links-list li {
+    margin: 0;
+}
+
+.internal-links-list a {
+    display: block;
+    padding: 8px 12px;
+    border-radius: 4px;
+    color: var(--muted-strong);
+    transition: color 180ms ease, background 180ms ease;
+}
+
+.internal-links-list a:hover {
+    color: var(--text);
+    background: rgba(69, 227, 255, 0.08);
+}
+
 .no-codes {
     position: relative;
     margin-top: 16px;

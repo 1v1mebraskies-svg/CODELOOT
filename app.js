@@ -26,29 +26,187 @@
             return c.status === 'active';
         });
 
+        const expiredCodes = (game.codes || []).filter(function (c) {
+            return c.status === 'expired';
+        });
+
         grid.innerHTML = activeCodes.map(renderCodeCard).join('');
 
+        // Update active codes stat
         const statValue = document.querySelector('.game-stats .stat-card .stat-value');
         if (statValue) {
             statValue.textContent = String(activeCodes.length);
         }
 
+        // Update expired codes stat if it exists
+        const expiredStatValue = document.querySelector('.game-stats .stat-card:nth-child(2) .stat-value');
+        if (expiredStatValue) {
+            expiredStatValue.textContent = String(expiredCodes.length);
+        }
+
+        // Update banner description
         const bannerDesc = document.querySelector('.game-banner-copy p:last-of-type');
         if (bannerDesc) {
             bannerDesc.textContent = game.long_description || game.description || '';
         }
 
+        // Update banner image
         const bannerImg = document.querySelector('.game-banner img');
         if (bannerImg) {
             bannerImg.src = D.gameImageSrc(game, siteRoot);
         }
 
+        // Show/hide no codes message
         const noCodes = document.querySelector('.no-codes');
         if (noCodes) {
             noCodes.hidden = activeCodes.length > 0;
         }
 
+        // Add expired codes section if there are expired codes
+        addExpiredCodesSection(expiredCodes);
+
+        // Update how to redeem section
+        updateHowToRedeemSection(game);
+
+        // Add FAQ section
+        addFAQSection(game);
+
+        // Add internal links section
+        addInternalLinksSection(game);
+
+        // Update last checked date
+        updateLastCheckedDate(game);
+
         setupCopyButtons();
+    }
+
+    function renderExpiredCodeCard(code) {
+        const esc = D.escapeHtml;
+        return (
+            '<article class="code-card expired-code-card">' +
+            '<div><h3>' + esc(code.code) + '</h3><p>' + esc(code.reward) + '</p></div>' +
+            '<span class="status-badge expired">Expired</span>' +
+            '</article>'
+        );
+    }
+
+    function addExpiredCodesSection(expiredCodes) {
+        // Remove existing expired codes section if any
+        const existingSection = document.querySelector('.expired-codes-section');
+        if (existingSection) {
+            existingSection.remove();
+        }
+
+        if (!expiredCodes || expiredCodes.length === 0) {
+            return;
+        }
+
+        const contentMain = document.querySelector('.content-main');
+        if (!contentMain) return;
+
+        const expiredSection = document.createElement('section');
+        expiredSection.className = 'expired-codes-section';
+        expiredSection.innerHTML = 
+            '<div class="panel-heading">' +
+            '<p class="eyebrow">Expired codes</p>' +
+            '<h2>No longer working</h2>' +
+            '<p>These codes have expired and no longer work.</p>' +
+            '</div>' +
+            '<div class="code-grid expired-codes-grid">' +
+            expiredCodes.map(renderExpiredCodeCard).join('') +
+            '</div>';
+
+        contentMain.appendChild(expiredSection);
+    }
+
+    function updateHowToRedeemSection(game) {
+        const checklistSection = document.querySelector('.side-panel');
+        if (!checklistSection) return;
+
+        const instructions = game.redeem_instructions || [];
+        if (instructions.length === 0) {
+            // Keep default checklist if no custom instructions
+            return;
+        }
+
+        const checkList = checklistSection.querySelector('.check-list');
+        if (!checkList) return;
+
+        checkList.innerHTML = instructions.map(function(step) {
+            return '<li>' + D.escapeHtml(step) + '</li>';
+        }).join('');
+    }
+
+    function addFAQSection(game) {
+        // Remove existing FAQ section if any
+        const existingSection = document.querySelector('.faq-section');
+        if (existingSection) {
+            existingSection.remove();
+        }
+
+        const sidebarStack = document.querySelector('.sidebar-stack');
+        if (!sidebarStack) return;
+
+        const faqSection = document.createElement('section');
+        faqSection.className = 'side-panel card faq-section';
+        faqSection.innerHTML = 
+            '<p class="eyebrow">FAQ</p>' +
+            '<h2>Frequently Asked Questions</h2>' +
+            '<div class="faq-list">' +
+            '<div class="faq-item">' +
+            '<h3>How often are codes updated?</h3>' +
+            '<p>Codes are verified and updated regularly. Check back often for new rewards.</p>' +
+            '</div>' +
+            '<div class="faq-item">' +
+            '<h3>What if a code doesn\'t work?</h3>' +
+            '<p>Make sure you enter the code exactly as shown, including capitalization. Codes are case-sensitive and may expire.</p>' +
+            '</div>' +
+            '<div class="faq-item">' +
+            '<h3>Can I use codes more than once?</h3>' +
+            '<p>Most codes can only be redeemed once per account. Check the game\'s official announcements for exceptions.</p>' +
+            '</div>' +
+            '</div>';
+
+        sidebarStack.appendChild(faqSection);
+    }
+
+    function addInternalLinksSection(game) {
+        // Remove existing internal links section if any
+        const existingSection = document.querySelector('.internal-links-section');
+        if (existingSection) {
+            existingSection.remove();
+        }
+
+        const sidebarStack = document.querySelector('.sidebar-stack');
+        if (!sidebarStack) return;
+
+        const internalLinksSection = document.createElement('section');
+        internalLinksSection.className = 'side-panel card internal-links-section';
+        internalLinksSection.innerHTML = 
+            '<p class="eyebrow">Quick links</p>' +
+            '<h2>Internal Links</h2>' +
+            '<ul class="internal-links-list">' +
+            '<li><a href="../index.html">All Games</a></li>' +
+            '<li><a href="../about.html">About CodeLoot</a></li>' +
+            '<li><a href="../contact.html">Contact Us</a></li>' +
+            '<li><a href="../privacy-policy.html">Privacy Policy</a></li>' +
+            '</ul>';
+
+        sidebarStack.appendChild(internalLinksSection);
+    }
+
+    function updateLastCheckedDate(game) {
+        const updateDate = game.update_date || game.updated_at;
+        const dateElements = document.querySelectorAll('.game-stats .stat-card:nth-child(3) .stat-value');
+        
+        if (updateDate && dateElements.length > 0) {
+            const formattedDate = new Date(updateDate).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+            dateElements[0].textContent = formattedDate;
+        }
     }
 
     function syncCardFromGame(card, game) {
